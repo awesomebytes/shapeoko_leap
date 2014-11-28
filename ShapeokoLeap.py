@@ -9,9 +9,11 @@
 
 import Leap, sys, thread, time
 from Leap import CircleGesture, KeyTapGesture, ScreenTapGesture, SwipeGesture
+# Gcode imports
 from lib.grblstuff import setup_logging, hello_grbl, do_command
 from lib.getch import getch
 
+SERIAL_PORT = "/dev/ttyACM0"
 
 class SampleListener(Leap.Listener):
     finger_names = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky']
@@ -20,13 +22,13 @@ class SampleListener(Leap.Listener):
 
     def on_init(self, controller):
         print "Getting CNC..."
-        self.grbl = hello_grbl("/dev/ttyACM0", None)
+        self.grbl = hello_grbl(SERIAL_PORT, None)
         print "Got CNC!"
         print "Setting absolute mode"
         do_command(self.grbl, "G90")
         print "Done."
         print "Setting speeds"
-        do_command(self.grbl, "$4=2000.000")
+        do_command(self.grbl, "$4=2000.000") # Be careful with this?
         do_command(self.grbl, "$5=2000.000")
         print "Initialized"
 
@@ -70,6 +72,13 @@ class SampleListener(Leap.Listener):
 
             print "  %s, id %d, position: %s" % (
                 handType, hand.id, hand.palm_position)
+            
+#             The output looks like:
+#             Frame id: 489571, timestamp: 6298509191, hands: 1, fingers: 5, tools: 0, gestures: 0
+#               Right hand, id 257, position: (-16.1821, 254.215, 34.3865)
+#             Sending command: G00 X-16.1820755005 Y-34.3865356445 Z0.0
+
+            
             
             x = float(hand.palm_position[0]) # X
             x = self.adapt_num(x)

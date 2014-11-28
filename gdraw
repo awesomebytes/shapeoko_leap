@@ -1,0 +1,111 @@
+#!/usr/bin/env python 
+#
+# gdraw: simple interactive drawing program maps keypresses to gcodes
+# and sends them to grbl on an arduino via a usb serial connection on
+# OSX.
+#
+import sys
+import os.path
+from optparse import OptionParser
+import logging
+# path hack so we can import from sibling lib directory. 
+sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
+from lib.grblstuff import setup_logging, hello_grbl, do_command
+from lib.getch import getch
+
+def log(logger='gdraw'):
+    return logging.getLogger(logger)
+
+def main():
+
+    parser = OptionParser(usage="""
+    %prog [options]
+
+    simple interactive drawing program, converts keypresses to gcodes
+    and sends them to the GRBL/Arduino.
+        
+    [ : step -x
+    ] : step +x
+    ' : step +y
+    = : step +y
+    \ : step -z
+    | : step +z
+    p : toggle penup/pendown
+    . : exit
+
+    Prior to any transmission, settings for grbl will be read from
+    ./grbl.conf or /usr/local/etc/grbl.conf if these exist and are not
+    overridden by the --conf or --noconf options.
+    """)
+    parser.add_option("--xystep", type="float", default=10,
+                      help="default x,y step in mm (10)"),
+    parser.add_option("--zstep", type="float", default=.1,
+                      help="default z step in mm (1)"),
+    parser.add_option("--upstep", type="float", default=10,
+                      help="default pen-up z step in mm (10)"),
+    parser.add_option("--dev", default = "/dev/tty.usbmodem*",
+                      help="filepath pattern for grbl serial device"),
+    parser.add_option("-c", "--conf", 
+                      help="config file to send to grbl at startup")
+    parser.add_option("-n", "--noconf", action="store_true",
+                      help="send no configuration to grble at startup")
+    parser.add_option("-v", "--verbose", action="store_true",
+                      help="log grbl input and output")
+    parser.add_option("-L", "--logfile", default=None,
+                      help="send log stream to this file (default stderr)")
+    parser.add_option("--settings", action="store_true",
+                      help="display grbl settings, suitable for your conf file")
+    parser.add_option("--penup", action="store_true", 
+                      help="raise the pen as the first (or only) action")
+    (opts, args) = parser.parse_args()
+
+    setup_logging(info=opts.verbose, path=opts.logfile)
+    conf = opts.conf
+    if not conf and not opts.noconf:
+        if os.path.exists("grbl.conf"):
+            conf = "grbl.conf"
+        elif os.path.exists("/usr/local/etc/grbl.conf"):
+            conf = "/usr/local/etc/grbl.conf"
+    grbl = hello_grbl(opts.dev, conf)
+    if not grbl:
+        sys.exit(0)
+    if opts.settings:
+        settings = do_command(grbl, "$")
+        print settings
+    print "press keys to move shapeoko, '.' to exit"
+    do_command(grbl, "G91") # incremental step mode
+    if opts.penup:
+        print "pen up!"
+        do_command(grbl, "G01 Z%s" % opts.upstep, wait=True)
+        pen_is_up = True
+    while True:
+        cmd = getch()
+        if cmd == '.':
+            break
+        elif cmd == 'a':
+            print "<",
+            do_command(grbl, "G01 X-%s" % opts.xystep)
+        elif cmd == 'd':
+            print ">",
+            do_command(grbl, "G01 X%s" % opts.xystep)
+        elif cmd == 'w':
+            print "^",
+            do_command(grbl, "G01 Y%s" % opts.xystep)
+        elif cmd == 's':
+            print "v",
+            do_command(grbl, "G01 Y-%s" % opts.xystep)
+        elif cmd == 'j':
+            do_command(grbl, "G01 Z%s" % opts.zstep)
+        elif cmd == 'k':
+            do_command(grbl, "G01 Z-%s" % opts.zstep)
+        elif cmd == 'p':
+            do_command(grbl, "G01 Z%s" % (opts.upstep*(-1 if pen_is_up else 1)))
+            pen_is_up = not pen_is_up
+        elif cmd in "0123456789":
+            xstep = ord(cmd) - ord("0")
+    grbl.close()
+    log().info("done!")
+
+if __name__ == "__main__":
+    sys.exit(main())
+
